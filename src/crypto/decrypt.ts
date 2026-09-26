@@ -1,20 +1,6 @@
+import { base64ToBytes } from "./encoding";
+
 const decoder = new TextDecoder();
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  try {
-    const binary = atob(base64);
-
-    const bytes = new Uint8Array(binary.length);
-
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-
-    return bytes;
-  } catch {
-    throw new Error("Invalid Base64 data.");
-  }
-}
 
 export async function decryptData(
   keyBase64: string,
@@ -28,13 +14,24 @@ export async function decryptData(
     throw new Error("Encrypted data is required.");
   }
 
-  const keyBytes = base64ToUint8Array(
-    keyBase64.trim()
-  );
+  let keyBytes: Uint8Array;
+  let combined: Uint8Array;
 
-  const combined = base64ToUint8Array(
-    ciphertextBase64.trim()
-  );
+  try {
+    keyBytes = base64ToBytes(keyBase64.trim());
+  } catch {
+    throw new Error(
+      "Invalid secret key. Expected a valid Base64 string."
+    );
+  }
+
+  try {
+    combined = base64ToBytes(ciphertextBase64.trim());
+  } catch {
+    throw new Error(
+      "Invalid encrypted data. Expected a valid Base64 string."
+    );
+  }
 
   // AES-GCM uses a 12-byte IV
   const IV_LENGTH = 12;
@@ -53,7 +50,7 @@ export async function decryptData(
     const cryptoKey =
       await window.crypto.subtle.importKey(
         "raw",
-        keyBytes,
+        keyBytes.buffer as ArrayBuffer,
         {
           name: "AES-GCM",
         },

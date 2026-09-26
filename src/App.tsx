@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { encryptData } from "./crypto/encrypt";
 import { decryptData } from "./crypto/decrypt";
-import "./index.css";
 
 type Mode = "encrypt" | "decrypt";
 

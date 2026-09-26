@@ -1,15 +1,6 @@
+import { bytesToBase64 } from "./encoding";
+
 const encoder = new TextEncoder();
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  return btoa(binary);
-}
 
 export async function encryptData(
   plaintext: string
@@ -59,14 +50,8 @@ export async function encryptData(
   combined.set(iv, 0);
   combined.set(new Uint8Array(encrypted), iv.length);
 
-  const combinedBase64 = arrayBufferToBase64(
-    combined.buffer
-  );
-
-  const keyBase64 = arrayBufferToBase64(rawKey);
-
   return {
-    key: keyBase64,
-    ciphertext: combinedBase64,
+    key: bytesToBase64(new Uint8Array(rawKey)),
+    ciphertext: bytesToBase64(combined),
   };
 }
