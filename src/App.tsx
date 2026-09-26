@@ -3,93 +3,99 @@ import { encryptData } from "./crypto/encrypt";
 import { decryptData } from "./crypto/decrypt";
 import "./index.css";
 
-type Page = "encrypt" | "decrypt";
+type Mode = "encrypt" | "decrypt";
 
 function App() {
-  const [page, setPage] = useState<Page>("encrypt");
+  const [mode, setMode] = useState<Mode>("encrypt");
 
-  const [plainText, setPlainText] = useState("");
-  const [key, setKey] = useState("");
-  const [encryptedData, setEncryptedData] = useState("");
-  const [decryptedData, setDecryptedData] = useState("");
+  // Encrypt
+  const [inputText, setInputText] = useState("");
+  const [encryptKey, setEncryptKey] = useState("");
+  const [ciphertext, setCiphertext] = useState("");
+
+  // Decrypt
+  const [decryptKey, setDecryptKey] = useState("");
+  const [decryptCiphertext, setDecryptCiphertext] =
+    useState("");
+  const [originalText, setOriginalText] = useState("");
 
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState("");
+  const [toast, setToast] = useState("");
 
-  const [showKey, setShowKey] = useState(false);
+  const showToast = (message: string) => {
+    setToast(message);
+
+    setTimeout(() => {
+      setToast("");
+    }, 2500);
+  };
 
   const handleEncrypt = async () => {
     setError("");
-    setCopied("");
-    setKey("");
-    setEncryptedData("");
-    setDecryptedData("");
 
-    if (!plainText.trim()) {
-      setError("Please enter some data to encrypt.");
+    if (!inputText.trim()) {
+      showToast("Please enter text or data to encrypt.");
       return;
     }
 
     try {
-      const result = await encryptData(plainText);
+      const result = await encryptData(inputText);
 
-      setKey(result.key);
-      setEncryptedData(result.ciphertext);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Encryption failed."
-      );
+      setEncryptKey(result.key);
+      setCiphertext(result.ciphertext);
+
+      showToast("Data successfully encrypted.");
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Encryption failed.";
+
+      setError(message);
+      showToast(message);
     }
   };
 
   const handleDecrypt = async () => {
     setError("");
-    setDecryptedData("");
+    setOriginalText("");
 
-    if (!key.trim()) {
-      setError("Please enter the secret key.");
-      return;
-    }
-
-    if (!encryptedData.trim()) {
-      setError("Please enter the encrypted data.");
+    if (!decryptKey.trim() || !decryptCiphertext.trim()) {
+      showToast(
+        "Please provide both the Secret Key and Encrypted Data."
+      );
       return;
     }
 
     try {
       const result = await decryptData(
-        key.trim(),
-        encryptedData.trim()
+        decryptKey.trim(),
+        decryptCiphertext.trim()
       );
 
-      setDecryptedData(result);
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Decryption failed."
-      );
+      setOriginalText(result);
+
+      showToast("Data successfully decrypted.");
+    } catch {
+      const message =
+        "Decryption failed. Please check your key and ciphertext.";
+
+      setError(message);
+      showToast(message);
     }
   };
 
-  const copyToClipboard = async (
+  const copyText = async (
     value: string,
-    type: string
+    label: string
   ) => {
     if (!value) return;
 
     try {
       await navigator.clipboard.writeText(value);
-
-      setCopied(type);
-
-      setTimeout(() => {
-        setCopied("");
-      }, 1800);
+      showToast(`${label} copied.`);
     } catch {
-      setError("Unable to copy to clipboard.");
+      showToast("Failed to copy text.");
     }
   };
 
@@ -114,385 +120,285 @@ function App() {
     document.body.removeChild(link);
 
     URL.revokeObjectURL(url);
+
+    showToast(`Downloaded ${filename}`);
   };
 
-  const handleClear = () => {
-    setPlainText("");
-    setKey("");
-    setEncryptedData("");
-    setDecryptedData("");
+  const switchMode = (newMode: Mode) => {
+    setMode(newMode);
     setError("");
-    setCopied("");
-    setShowKey(false);
-  };
-
-  const handleImportKey = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-
-      setKey(text.trim());
-      setError("");
-    } catch {
-      setError("Unable to import key.");
-    }
-
-    event.target.value = "";
-  };
-
-  const handleImportEncryptedData = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = event.target.files?.[0];
-
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-
-      setEncryptedData(text.trim());
-      setError("");
-    } catch {
-      setError("Unable to import encrypted data.");
-    }
-
-    event.target.value = "";
   };
 
   return (
     <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-icon">🔐</div>
+      {/* Header */}
+      <header className="header">
+        <div className="header-inner">
+          <div className="brand">
+            <span className="brand-name">
+              AES-256
+            </span>
 
-          <div>
-            <h1>AES-256</h1>
-            <p>Secure encryption</p>
+            <span className="brand-badge">
+              Secure Tool
+            </span>
           </div>
-        </div>
 
-        <div className="mode-switch">
-          <button
-            className={page === "encrypt" ? "active" : ""}
-            onClick={() => {
-              setPage("encrypt");
-              setError("");
-            }}
-          >
-            Encrypt
-          </button>
+          <nav className="tabs">
+            <button
+              className={`tab ${
+                mode === "encrypt" ? "active" : ""
+              }`}
+              onClick={() => switchMode("encrypt")}
+            >
+              Encrypt
+            </button>
 
-          <button
-            className={page === "decrypt" ? "active" : ""}
-            onClick={() => {
-              setPage("decrypt");
-              setError("");
-            }}
-          >
-            Decrypt
-          </button>
+            <button
+              className={`tab ${
+                mode === "decrypt" ? "active" : ""
+              }`}
+              onClick={() => switchMode("decrypt")}
+            >
+              Decrypt
+            </button>
+          </nav>
         </div>
       </header>
 
-      <main className="container">
-        {page === "encrypt" ? (
-          <>
-            <section className="hero">
-              <h2>Encrypt your data</h2>
+      {/* Main */}
+      <main className="main">
+        {mode === "encrypt" ? (
+          <section className="view">
+            <div className="page-heading">
+              <h1>Encrypt data</h1>
 
               <p>
-                Enter your data and generate a secure
-                AES-256 encrypted value.
+                Transform plaintext into secure AES-256
+                encrypted string.
               </p>
-            </section>
+            </div>
 
-            <section className="crypto-section">
-              <div className="section-header">
-                <div className="section-title">
-                  <span>📝</span>
-                  <strong>Data</strong>
-                </div>
-              </div>
+            {/* Input */}
+            <div className="field">
+              <label htmlFor="encrypt-input">
+                Input Text
+              </label>
 
               <textarea
-                value={plainText}
-                onChange={(event) =>
-                  setPlainText(event.target.value)
+                id="encrypt-input"
+                rows={5}
+                value={inputText}
+                onChange={(e) =>
+                  setInputText(e.target.value)
                 }
-                placeholder="Enter the data you want to encrypt..."
-                rows={6}
+                placeholder="Enter text or data to encrypt..."
               />
+            </div>
 
-              <div className="action-row">
-                <button
-                  className="primary"
-                  onClick={handleEncrypt}
-                >
-                  Encrypt
-                </button>
+            {/* Encrypt button */}
+            <div className="action-container">
+              <button
+                className="primary-button"
+                onClick={handleEncrypt}
+              >
+                Encrypt Data
+              </button>
+            </div>
 
-                <button
-                  className="secondary"
-                  onClick={handleClear}
-                >
-                  Clear
-                </button>
-              </div>
-            </section>
+            {/* Results */}
+            {encryptKey && ciphertext && (
+              <div className="results">
+                {/* Key */}
+                <div className="result-block">
+                  <div className="result-header">
+                    <label>Secret Key</label>
 
-            {key && (
-              <section className="crypto-section">
-                <div className="section-header">
-                  <div className="section-title">
-                    <span>🔑</span>
-                    <strong>Secret Key</strong>
+                    <div className="result-actions">
+                      <button
+                        onClick={() =>
+                          copyText(
+                            encryptKey,
+                            "Secret key"
+                          )
+                        }
+                      >
+                        Copy
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          downloadText(
+                            encryptKey,
+                            "secret-key.txt"
+                          )
+                        }
+                      >
+                        Download
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                <div className="secret-value">
                   <input
-                    type={showKey ? "text" : "password"}
-                    value={key}
+                    className="result-input"
+                    value={encryptKey}
                     readOnly
                   />
 
-                  <button
-                    className="icon-button"
-                    onClick={() =>
-                      setShowKey(!showKey)
-                    }
-                    title={
-                      showKey
-                        ? "Hide key"
-                        : "Show key"
-                    }
-                  >
-                    {showKey ? "🙈" : "👁"}
-                  </button>
+                  <p className="warning">
+                    Save this key securely. It is required
+                    to decrypt your data and cannot be
+                    recovered if lost.
+                  </p>
                 </div>
 
-                <div className="button-row">
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      copyToClipboard(key, "key")
-                    }
-                  >
-                    {copied === "key"
-                      ? "Copied ✓"
-                      : "📋 Copy"}
-                  </button>
+                {/* Ciphertext */}
+                <div className="result-block">
+                  <div className="result-header">
+                    <label>
+                      Encrypted Data (Ciphertext)
+                    </label>
 
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      downloadText(
-                        key,
-                        "aes-256-key.txt"
-                      )
-                    }
-                  >
-                    ⬇ Download
-                  </button>
-                </div>
-              </section>
-            )}
+                    <div className="result-actions">
+                      <button
+                        onClick={() =>
+                          copyText(
+                            ciphertext,
+                            "Encrypted data"
+                          )
+                        }
+                      >
+                        Copy
+                      </button>
 
-            {encryptedData && (
-              <section className="crypto-section">
-                <div className="section-header">
-                  <div className="section-title">
-                    <span>📦</span>
-                    <strong>Encrypted Data</strong>
+                      <button
+                        onClick={() =>
+                          downloadText(
+                            ciphertext,
+                            "ciphertext.txt"
+                          )
+                        }
+                      >
+                        Download
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                <div className="encrypted-value">
-                  {encryptedData}
+                  <textarea
+                    className="result-textarea"
+                    rows={4}
+                    value={ciphertext}
+                    readOnly
+                  />
                 </div>
-
-                <div className="button-row">
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      copyToClipboard(
-                        encryptedData,
-                        "encrypted"
-                      )
-                    }
-                  >
-                    {copied === "encrypted"
-                      ? "Copied ✓"
-                      : "📋 Copy"}
-                  </button>
-
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      downloadText(
-                        encryptedData,
-                        "encrypted-data.txt"
-                      )
-                    }
-                  >
-                    ⬇ Download
-                  </button>
-                </div>
-              </section>
+              </div>
             )}
-          </>
+          </section>
         ) : (
-          <>
-            <section className="hero">
-              <h2>Decrypt your data</h2>
+          <section className="view">
+            <div className="page-heading">
+              <h1>Decrypt data</h1>
 
               <p>
-                Enter your secret key and encrypted
-                data to recover the original value.
+                Restore encrypted ciphertext back into
+                readable original data using your secret
+                key.
               </p>
-            </section>
+            </div>
 
-            <section className="crypto-section">
-              <div className="section-header">
-                <div className="section-title">
-                  <span>🔑</span>
-                  <strong>Secret Key</strong>
-                </div>
-              </div>
+            {/* Secret Key */}
+            <div className="field-group">
+              <div className="field">
+                <label htmlFor="decrypt-key">
+                  Secret Key
+                </label>
 
-              <div className="secret-value">
                 <input
-                  type={showKey ? "text" : "password"}
-                  value={key}
-                  onChange={(event) =>
-                    setKey(event.target.value)
+                  id="decrypt-key"
+                  type="text"
+                  value={decryptKey}
+                  onChange={(e) =>
+                    setDecryptKey(e.target.value)
                   }
-                  placeholder="Enter your secret key..."
+                  placeholder="Enter secret key..."
                 />
-
-                <button
-                  className="icon-button"
-                  onClick={() =>
-                    setShowKey(!showKey)
-                  }
-                  title={
-                    showKey
-                      ? "Hide key"
-                      : "Show key"
-                  }
-                >
-                  {showKey ? "🙈" : "👁"}
-                </button>
               </div>
 
-              <div className="button-row">
-                <label className="secondary file-button">
-                  Import Key
-                  <input
-                    type="file"
-                    accept=".txt"
-                    onChange={handleImportKey}
-                    hidden
-                  />
+              <div className="field">
+                <label htmlFor="decrypt-input">
+                  Encrypted Data (Ciphertext)
                 </label>
+
+                <textarea
+                  id="decrypt-input"
+                  rows={5}
+                  value={decryptCiphertext}
+                  onChange={(e) =>
+                    setDecryptCiphertext(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Paste encrypted ciphertext string here..."
+                />
               </div>
-            </section>
+            </div>
 
-            <section className="crypto-section">
-              <div className="section-header">
-                <div className="section-title">
-                  <span>📦</span>
-                  <strong>Encrypted Data</strong>
-                </div>
-              </div>
-
-              <textarea
-                value={encryptedData}
-                onChange={(event) =>
-                  setEncryptedData(
-                    event.target.value
-                  )
-                }
-                placeholder="Paste encrypted data..."
-                rows={5}
-              />
-
-              <div className="button-row">
-                <label className="secondary file-button">
-                  Import Data
-                  <input
-                    type="file"
-                    accept=".txt"
-                    onChange={
-                      handleImportEncryptedData
-                    }
-                    hidden
-                  />
-                </label>
-              </div>
-            </section>
-
-            <section className="decrypt-action">
+            {/* Decrypt */}
+            <div className="action-container">
               <button
-                className="primary"
+                className="primary-button"
                 onClick={handleDecrypt}
               >
-                Decrypt
+                Decrypt Data
               </button>
+            </div>
 
-              <button
-                className="secondary"
-                onClick={handleClear}
-              >
-                Clear
-              </button>
-            </section>
+            {/* Result */}
+            {originalText && (
+              <div className="decrypt-result">
+                <div className="result-header">
+                  <label>Original Data</label>
 
-            {decryptedData && (
-              <section className="crypto-section result-section">
-                <div className="section-header">
-                  <div className="section-title">
-                    <span>✓</span>
-                    <strong>Original Data</strong>
+                  <div className="result-actions">
+                    <button
+                      onClick={() =>
+                        copyText(
+                          originalText,
+                          "Original data"
+                        )
+                      }
+                    >
+                      Copy
+                    </button>
                   </div>
                 </div>
 
-                <div className="decrypted-value">
-                  {decryptedData}
-                </div>
-
-                <div className="button-row">
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      copyToClipboard(
-                        decryptedData,
-                        "decrypted"
-                      )
-                    }
-                  >
-                    {copied === "decrypted"
-                      ? "Copied ✓"
-                      : "📋 Copy"}
-                  </button>
-                </div>
-              </section>
+                <textarea
+                  className="result-textarea"
+                  rows={5}
+                  value={originalText}
+                  readOnly
+                />
+              </div>
             )}
-          </>
+          </section>
         )}
 
         {error && (
           <div className="error-message">
-            <span>⚠</span>
             {error}
           </div>
         )}
       </main>
+
+      {/* Toast */}
+      <div
+        className={`toast ${
+          toast ? "toast-visible" : ""
+        }`}
+      >
+        {toast}
+      </div>
     </div>
   );
 }
