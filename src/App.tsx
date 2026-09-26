@@ -24,11 +24,12 @@ function App() {
   const [tamperStatus, setTamperStatus] = useState("");
   const [importStatus, setImportStatus] = useState("");
 
+  /* =========================================
+     ENCRYPT
+  ========================================= */
+
   async function handleEncrypt() {
-    setError("");
-    setCopied("");
-    setTamperStatus("");
-    setImportStatus("");
+    resetMessages();
     setDecryptedData("");
 
     if (!plaintext.trim()) {
@@ -46,15 +47,16 @@ function App() {
     }
   }
 
+  /* =========================================
+     DECRYPT
+  ========================================= */
+
   async function handleDecrypt() {
-    setError("");
-    setCopied("");
-    setTamperStatus("");
-    setImportStatus("");
+    resetMessages();
     setDecryptedData("");
 
     if (!key.trim()) {
-      setError("Please provide the encryption key.");
+      setError("Please provide the secret encryption key.");
       return;
     }
 
@@ -64,7 +66,7 @@ function App() {
     }
 
     try {
-      validateEncryptedPackage(encryptedData);
+      parseEncryptedPackage(encryptedData);
 
       const result = await decryptData(
         key.trim(),
@@ -77,53 +79,67 @@ function App() {
         setError(err.message);
       } else {
         setError(
-          "Decryption failed. Check your key and encrypted data."
+          "Decryption failed. Check your key and encrypted package."
         );
       }
     }
   }
 
-  async function handleTamperTest() {
-    setError("");
-    setTamperStatus("");
+  /* =========================================
+     COPY
+  ========================================= */
 
-    if (!key || !encryptedData) {
-      setError("Encrypt some data first.");
-      return;
-    }
-
+  async function copyToClipboard(
+    value: string,
+    name: string
+  ) {
     try {
-      const packageData =
-        parseEncryptedPackage(encryptedData);
+      await navigator.clipboard.writeText(value);
 
-      const ciphertext = packageData.ciphertext;
+      setCopied(name);
 
-      const replacement =
-        ciphertext[0] === "A" ? "B" : "A";
-
-      packageData.ciphertext =
-        replacement + ciphertext.slice(1);
-
-      await decryptData(
-        key,
-        JSON.stringify(packageData)
-      );
-
-      setTamperStatus(
-        "⚠️ Unexpected result: tampered data was accepted."
-      );
+      setTimeout(() => {
+        setCopied("");
+      }, 1500);
     } catch {
-      setTamperStatus(
-        "✓ Tampering detected — AES-GCM authentication failed."
-      );
+      setError("Could not copy to clipboard.");
     }
   }
 
-  function exportEncryptedPackage() {
+  /* =========================================
+     DOWNLOAD KEY
+  ========================================= */
+
+  function downloadKey() {
+    if (!key.trim()) {
+      setError("There is no encryption key to download.");
+      return;
+    }
+
+    const blob = new Blob(
+      [key.trim()],
+      {
+        type: "text/plain",
+      }
+    );
+
+    downloadFile(
+      blob,
+      "aes-256-secret-key.txt"
+    );
+  }
+
+  /* =========================================
+     DOWNLOAD ENCRYPTED PACKAGE
+  ========================================= */
+
+  function downloadEncryptedPackage() {
     setError("");
 
     if (!encryptedData.trim()) {
-      setError("Encrypt some data before exporting.");
+      setError(
+        "There is no encrypted package to download."
+      );
       return;
     }
 
@@ -131,41 +147,37 @@ function App() {
       const packageData =
         parseEncryptedPackage(encryptedData);
 
-      const fileContent = JSON.stringify(
+      const content = JSON.stringify(
         packageData,
         null,
         2
       );
 
       const blob = new Blob(
-        [fileContent],
+        [content],
         {
           type: "application/json",
         }
       );
 
-      const url = URL.createObjectURL(blob);
-
-      const link = document.createElement("a");
-
-      link.href = url;
-      link.download = "encrypted-data.json";
-
-      document.body.appendChild(link);
-
-      link.click();
-
-      link.remove();
-
-      URL.revokeObjectURL(url);
+      downloadFile(
+        blob,
+        "encrypted-data.json"
+      );
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Could not export encrypted package.");
+        setError(
+          "Could not download encrypted package."
+        );
       }
     }
   }
+
+  /* =========================================
+     IMPORT ENCRYPTED PACKAGE
+  ========================================= */
 
   async function handleImport(
     event: ChangeEvent<HTMLInputElement>
@@ -182,9 +194,14 @@ function App() {
 
     if (
       file.type !== "application/json" &&
-      !file.name.toLowerCase().endsWith(".json")
+      !file.name
+        .toLowerCase()
+        .endsWith(".json")
     ) {
-      setError("Please select a JSON encrypted package.");
+      setError(
+        "Please select a JSON encrypted package."
+      );
+
       event.target.value = "";
       return;
     }
@@ -207,7 +224,7 @@ function App() {
         setError(err.message);
       } else {
         setError(
-          "Could not import the encrypted package."
+          "Could not import encrypted package."
         );
       }
     }
@@ -215,60 +232,161 @@ function App() {
     event.target.value = "";
   }
 
-  async function copyToClipboard(
-    value: string,
-    name: string
+  /* =========================================
+     IMPORT KEY
+  ========================================= */
+
+  async function handleKeyImport(
+    event: ChangeEvent<HTMLInputElement>
   ) {
+    setError("");
+    setImportStatus("");
+
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(value);
+      const content = (
+        await file.text()
+      ).trim();
 
-      setCopied(name);
+      if (!content) {
+        throw new Error(
+          "The key file is empty."
+        );
+      }
 
-      setTimeout(() => {
-        setCopied("");
-      }, 1500);
+      setKey(content);
+
+      setImportStatus(
+        `✓ Imported ${file.name}`
+      );
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError(
+          "Could not import the key."
+        );
+      }
+    }
+
+    event.target.value = "";
+  }
+
+  /* =========================================
+     TAMPER TEST
+  ========================================= */
+
+  async function handleTamperTest() {
+    setError("");
+    setTamperStatus("");
+
+    if (!key || !encryptedData) {
+      setError(
+        "Encrypt some data first."
+      );
+      return;
+    }
+
+    try {
+      const packageData =
+        parseEncryptedPackage(
+          encryptedData
+        );
+
+      const ciphertext =
+        packageData.ciphertext;
+
+      const replacement =
+        ciphertext[0] === "A"
+          ? "B"
+          : "A";
+
+      packageData.ciphertext =
+        replacement +
+        ciphertext.slice(1);
+
+      await decryptData(
+        key,
+        JSON.stringify(packageData)
+      );
+
+      setTamperStatus(
+        "⚠️ Unexpected result: tampered data was accepted."
+      );
     } catch {
-      setError("Could not copy to clipboard.");
+      setTamperStatus(
+        "✓ Tampering detected — AES-GCM authentication failed."
+      );
     }
   }
 
+  /* =========================================
+     MODE
+  ========================================= */
+
   function switchMode(nextMode: Mode) {
     setMode(nextMode);
-    setError("");
-    setCopied("");
-    setTamperStatus("");
-    setImportStatus("");
+
+    resetMessages();
+
     setDecryptedData("");
   }
+
+  /* =========================================
+     CLEAR
+  ========================================= */
 
   function clearAll() {
     setPlaintext("");
     setKey("");
     setEncryptedData("");
     setDecryptedData("");
+
+    resetMessages();
+  }
+
+  function resetMessages() {
     setError("");
     setCopied("");
     setTamperStatus("");
     setImportStatus("");
   }
 
+  /* =========================================
+     UI
+  ========================================= */
+
   return (
     <main className="app">
+
+      {/* HEADER */}
+
       <header className="header">
+
         <div className="brand">
-          <div className="brand-icon">🔐</div>
+
+          <div className="brand-icon">
+            🔐
+          </div>
 
           <div>
             <h1>AES-256 Lab</h1>
 
             <p>
-              Learn encryption through a working
-              implementation.
+              Learn encryption through a
+              working implementation.
             </p>
           </div>
+
         </div>
 
         <div className="mode-switch">
+
           <button
             className={
               mode === "encrypt"
@@ -294,25 +412,36 @@ function App() {
           >
             Decrypt
           </button>
+
         </div>
+
       </header>
 
+      {/* MAIN */}
+
       <section className="card">
+
         {mode === "encrypt" ? (
+
           <>
             <div className="section-heading">
+
               <span className="step">
                 01
               </span>
 
               <div>
-                <h2>Encrypt data</h2>
+                <h2>
+                  Encrypt data
+                </h2>
 
                 <p>
-                  Enter plaintext and encrypt it
-                  using AES-256-GCM.
+                  Enter plaintext and
+                  encrypt it using
+                  AES-256-GCM.
                 </p>
               </div>
+
             </div>
 
             <label htmlFor="plaintext">
@@ -337,58 +466,142 @@ function App() {
               🔐 Encrypt
             </button>
 
+            {/* SECRET KEY */}
+
             {key && (
-              <OutputBox
-                label="Encryption Key"
-                value={key}
-                onCopy={() =>
-                  copyToClipboard(
-                    key,
-                    "key"
-                  )
-                }
-                copied={
-                  copied === "key"
-                }
-              />
+
+              <div className="crypto-section">
+
+                <div className="crypto-title">
+
+                  <div>
+                    <span className="crypto-icon">
+                      🔑
+                    </span>
+
+                    <div>
+                      <h3>
+                        Secret Encryption Key
+                      </h3>
+
+                      <p>
+                        Keep this key private.
+                        Anyone with it can
+                        decrypt the data.
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="secret-badge">
+                    SECRET
+                  </span>
+
+                </div>
+
+                <div className="secret-value">
+                  {key}
+                </div>
+
+                <div className="button-row">
+
+                  <button
+                    className="secondary"
+                    onClick={() =>
+                      copyToClipboard(
+                        key,
+                        "key"
+                      )
+                    }
+                  >
+                    {copied === "key"
+                      ? "Copied ✓"
+                      : "📋 Copy Key"}
+                  </button>
+
+                  <button
+                    className="secondary"
+                    onClick={downloadKey}
+                  >
+                    💾 Download Key
+                  </button>
+
+                </div>
+
+              </div>
+
             )}
 
-            {encryptedData && (
-              <>
-                <OutputBox
-                  label="Encrypted Package"
-                  value={encryptedData}
-                  onCopy={() =>
-                    copyToClipboard(
-                      encryptedData,
-                      "encrypted"
-                    )
-                  }
-                  copied={
-                    copied ===
-                    "encrypted"
-                  }
-                />
+            {/* ENCRYPTED PACKAGE */}
 
-                <div className="action-row">
+            {encryptedData && (
+
+              <div className="crypto-section">
+
+                <div className="crypto-title">
+
+                  <div>
+                    <span className="crypto-icon">
+                      📦
+                    </span>
+
+                    <div>
+                      <h3>
+                        Encrypted Package
+                      </h3>
+
+                      <p>
+                        This package contains
+                        encrypted data and its
+                        IV — not the secret key.
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="share-badge">
+                    SHAREABLE
+                  </span>
+
+                </div>
+
+                <pre className="package-value">
+                  {encryptedData}
+                </pre>
+
+                <div className="button-row">
+
+                  <button
+                    className="secondary"
+                    onClick={() =>
+                      copyToClipboard(
+                        encryptedData,
+                        "package"
+                      )
+                    }
+                  >
+                    {copied === "package"
+                      ? "Copied ✓"
+                      : "📋 Copy Package"}
+                  </button>
+
                   <button
                     className="secondary"
                     onClick={
-                      exportEncryptedPackage
+                      downloadEncryptedPackage
                     }
                   >
-                    📥 Export JSON
+                    📥 Download JSON
                   </button>
 
-                  <button
-                    className="tamper-button"
-                    onClick={
-                      handleTamperTest
-                    }
-                  >
-                    🧪 Test Tampering
-                  </button>
                 </div>
+
+                <button
+                  className="tamper-button"
+                  onClick={
+                    handleTamperTest
+                  }
+                >
+                  🧪 Test Tampering
+                </button>
 
                 {tamperStatus && (
                   <div
@@ -403,49 +616,130 @@ function App() {
                     {tamperStatus}
                   </div>
                 )}
-              </>
+
+              </div>
+
             )}
+
           </>
+
         ) : (
+
+          /* =====================================
+             DECRYPT
+          ===================================== */
+
           <>
+
             <div className="section-heading">
+
               <span className="step">
                 02
               </span>
 
               <div>
-                <h2>Decrypt data</h2>
+                <h2>
+                  Decrypt data
+                </h2>
 
                 <p>
-                  Provide the encryption key
-                  and encrypted package.
+                  You need both the secret
+                  key and encrypted package.
                 </p>
               </div>
+
             </div>
 
-            <div className="import-box">
-              <div>
-                <h3>
-                  Import encrypted package
-                </h3>
+            {/* KEY */}
 
-                <p>
-                  Load an exported
-                  encrypted-data.json file.
-                </p>
+            <div className="import-section">
+
+              <div className="import-header">
+
+                <div>
+                  <h3>
+                    🔑 Secret Key
+                  </h3>
+
+                  <p>
+                    Paste your key or import
+                    the key file.
+                  </p>
+                </div>
+
+                <label className="file-button">
+
+                  📂 Import Key
+
+                  <input
+                    type="file"
+                    accept=".txt,.key"
+                    onChange={
+                      handleKeyImport
+                    }
+                  />
+
+                </label>
+
               </div>
 
-              <label className="file-button">
-                📂 Import JSON
+              <input
+                id="decrypt-key"
+                value={key}
+                onChange={(event) =>
+                  setKey(
+                    event.target.value
+                  )
+                }
+                placeholder="Paste your AES-256 secret key"
+              />
 
-                <input
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={
-                    handleImport
-                  }
-                />
-              </label>
+            </div>
+
+            {/* PACKAGE */}
+
+            <div className="import-section">
+
+              <div className="import-header">
+
+                <div>
+                  <h3>
+                    📦 Encrypted Package
+                  </h3>
+
+                  <p>
+                    Paste the encrypted
+                    JSON or import it.
+                  </p>
+                </div>
+
+                <label className="file-button">
+
+                  📂 Import JSON
+
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={
+                      handleImport
+                    }
+                  />
+
+                </label>
+
+              </div>
+
+              <textarea
+                id="encrypted-data"
+                value={encryptedData}
+                onChange={(event) =>
+                  setEncryptedData(
+                    event.target.value
+                  )
+                }
+                placeholder='Paste encrypted JSON, e.g. {"version":1,...}'
+              />
+
             </div>
 
             {importStatus && (
@@ -453,36 +747,6 @@ function App() {
                 {importStatus}
               </div>
             )}
-
-            <label htmlFor="decrypt-key">
-              Encryption Key
-            </label>
-
-            <input
-              id="decrypt-key"
-              value={key}
-              onChange={(event) =>
-                setKey(
-                  event.target.value
-                )
-              }
-              placeholder="Paste your AES-256 key"
-            />
-
-            <label htmlFor="encrypted-data">
-              Encrypted Package
-            </label>
-
-            <textarea
-              id="encrypted-data"
-              value={encryptedData}
-              onChange={(event) =>
-                setEncryptedData(
-                  event.target.value
-                )
-              }
-              placeholder='Paste encrypted JSON, e.g. {"version":1,...}'
-            />
 
             <button
               className="primary"
@@ -492,25 +756,49 @@ function App() {
             </button>
 
             {decryptedData && (
-              <OutputBox
-                label="Original Data"
-                value={
-                  decryptedData
-                }
-                onCopy={() =>
-                  copyToClipboard(
-                    decryptedData,
-                    "decrypted"
-                  )
-                }
-                copied={
-                  copied ===
+
+              <div className="decrypted-result">
+
+                <div className="result-icon">
+                  ✓
+                </div>
+
+                <div>
+
+                  <span>
+                    ORIGINAL DATA
+                  </span>
+
+                  <strong>
+                    {decryptedData}
+                  </strong>
+
+                </div>
+
+                <button
+                  className="copy-button"
+                  onClick={() =>
+                    copyToClipboard(
+                      decryptedData,
+                      "decrypted"
+                    )
+                  }
+                >
+                  {copied ===
                   "decrypted"
-                }
-              />
+                    ? "Copied ✓"
+                    : "Copy"}
+                </button>
+
+              </div>
+
             )}
+
           </>
+
         )}
+
+        {/* ERROR */}
 
         {error && (
           <div className="error">
@@ -518,13 +806,69 @@ function App() {
           </div>
         )}
 
+        {/* SECURITY CONCEPT */}
+
+        <div className="security-note">
+
+          <div className="security-diagram">
+
+            <div className="security-card secret">
+              <span>🔑</span>
+              <strong>
+                Secret Key
+              </strong>
+              <small>
+                KEEP PRIVATE
+              </small>
+            </div>
+
+            <div className="security-plus">
+              +
+            </div>
+
+            <div className="security-card package">
+              <span>📦</span>
+              <strong>
+                Encrypted Package
+              </strong>
+              <small>
+                CAN BE STORED
+              </small>
+            </div>
+
+          </div>
+
+          <div className="security-text">
+
+            <strong>
+              Key and encrypted data
+              are separate
+            </strong>
+
+            <p>
+              The encrypted package
+              does not contain the
+              secret AES key. The key
+              must be protected
+              separately.
+            </p>
+
+          </div>
+
+        </div>
+
+        {/* HOW IT WORKS */}
+
         <div className="how-it-works">
+
           <div className="how-header">
+
             <span className="step">
               03
             </span>
 
             <div>
+
               <h2>
                 How AES-256-GCM works
               </h2>
@@ -533,10 +877,13 @@ function App() {
                 A simplified view of what
                 happens during encryption.
               </p>
+
             </div>
+
           </div>
 
           <div className="flow">
+
             <FlowStep
               title="Plaintext"
               value='"Hello"'
@@ -577,9 +924,11 @@ function App() {
               title="Encrypted Package"
               value="IV + Ciphertext + Auth Tag"
             />
+
           </div>
 
           <div className="info-grid">
+
             <InfoBox
               title="256-bit Key"
               description="AES-256 uses a 256-bit encryption key, which is 32 bytes."
@@ -594,26 +943,9 @@ function App() {
               title="Authentication Tag"
               description="GCM detects whether the encrypted data has been modified."
             />
+
           </div>
-        </div>
 
-        <div className="security-note">
-          <span className="security-icon">
-            🔒
-          </span>
-
-          <div>
-            <strong>
-              Client-side encryption
-            </strong>
-
-            <p>
-              Plaintext, keys, and encrypted
-              data are processed locally in
-              your browser. This application
-              does not send them to a server.
-            </p>
-          </div>
         </div>
 
         <button
@@ -622,27 +954,64 @@ function App() {
         >
           Clear everything
         </button>
+
       </section>
 
       <footer>
-        <span>AES-256-GCM</span>
-        <span>•</span>
+
         <span>
-          Encryption happens locally in your
-          browser
+          AES-256-GCM
         </span>
+
+        <span>
+          •
+        </span>
+
+        <span>
+          Encryption happens locally
+          in your browser
+        </span>
+
       </footer>
+
     </main>
   );
 }
 
 /* =========================================
-   VALIDATION
+   DOWNLOAD
+========================================= */
+
+function downloadFile(
+  blob: Blob,
+  filename: string
+) {
+  const url =
+    URL.createObjectURL(blob);
+
+  const link =
+    document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+
+  document.body.appendChild(link);
+
+  link.click();
+
+  link.remove();
+
+  URL.revokeObjectURL(url);
+}
+
+/* =========================================
+   PACKAGE VALIDATION
 ========================================= */
 
 function parseEncryptedPackage(
   value: string
 ): EncryptedPackage {
+
   let parsed: unknown;
 
   try {
@@ -666,7 +1035,9 @@ function parseEncryptedPackage(
   const packageData =
     parsed as Record<string, unknown>;
 
-  if (packageData.version !== 1) {
+  if (
+    packageData.version !== 1
+  ) {
     throw new Error(
       "Unsupported encrypted package version."
     );
@@ -710,49 +1081,8 @@ function parseEncryptedPackage(
   };
 }
 
-function validateEncryptedPackage(
-  value: string
-) {
-  parseEncryptedPackage(value);
-}
-
 /* =========================================
-   OUTPUT BOX
-========================================= */
-
-function OutputBox({
-  label,
-  value,
-  onCopy,
-  copied,
-}: {
-  label: string;
-  value: string;
-  onCopy: () => void;
-  copied: boolean;
-}) {
-  return (
-    <div className="output">
-      <div className="output-header">
-        <label>{label}</label>
-
-        <button
-          className="copy-button"
-          onClick={onCopy}
-        >
-          {copied
-            ? "Copied ✓"
-            : "Copy"}
-        </button>
-      </div>
-
-      <pre>{value}</pre>
-    </div>
-  );
-}
-
-/* =========================================
-   FLOW STEP
+   FLOW COMPONENTS
 ========================================= */
 
 function FlowStep({
@@ -764,16 +1094,18 @@ function FlowStep({
 }) {
   return (
     <div className="flow-step">
-      <span>{title}</span>
 
-      <strong>{value}</strong>
+      <span>
+        {title}
+      </span>
+
+      <strong>
+        {value}
+      </strong>
+
     </div>
   );
 }
-
-/* =========================================
-   INFO BOX
-========================================= */
 
 function InfoBox({
   title,
@@ -784,9 +1116,15 @@ function InfoBox({
 }) {
   return (
     <div className="info-box">
-      <h3>{title}</h3>
 
-      <p>{description}</p>
+      <h3>
+        {title}
+      </h3>
+
+      <p>
+        {description}
+      </p>
+
     </div>
   );
 }
