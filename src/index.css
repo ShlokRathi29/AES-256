@@ -1161,5 +1161,26 @@ footer {
   .section-heading {
     margin-bottom: 24px;
   }
+  .minimal-crypto {
+  padding: 18px;
+}
+
+.minimal-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.minimal-title span {
+  font-size: 15px;
+}
+
+.minimal-title h3 {
+  margin: 0;
+  color: #dfe3e8;
+  font-size: 14px;
+  font-weight: 600;
+}
 
 }

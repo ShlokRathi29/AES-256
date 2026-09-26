@@ -1,15 +1,24 @@
-import { bytesToBase64 } from "./encoding";
+const encoder = new TextEncoder();
 
-export interface EncryptionResult {
-  key: string;
-  encryptedData: string;
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary);
 }
 
 export async function encryptData(
   plaintext: string
-): Promise<EncryptionResult> {
-  // 1. Generate a random 256-bit AES key
-  const cryptoKey = await crypto.subtle.generateKey(
+): Promise<{
+  key: string;
+  ciphertext: string;
+}> {
+  // Generate a secure 256-bit AES key
+  const cryptoKey = await window.crypto.subtle.generateKey(
     {
       name: "AES-GCM",
       length: 256,
@@ -18,38 +27,46 @@ export async function encryptData(
     ["encrypt", "decrypt"]
   );
 
-  // 2. Generate a fresh 96-bit / 12-byte IV
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  // AES-GCM standard 96-bit / 12-byte IV
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
 
-  // 3. Convert plaintext to UTF-8 bytes
-  const encodedData = new TextEncoder().encode(plaintext);
-
-  // 4. Encrypt using AES-256-GCM
-  const encrypted = await crypto.subtle.encrypt(
+  const encrypted = await window.crypto.subtle.encrypt(
     {
       name: "AES-GCM",
       iv,
     },
     cryptoKey,
-    encodedData
+    encoder.encode(plaintext)
   );
 
-  // 5. Export the raw 256-bit key
-  const rawKey = await crypto.subtle.exportKey("raw", cryptoKey);
+  // Export the AES key
+  const rawKey = await window.crypto.subtle.exportKey(
+    "raw",
+    cryptoKey
+  );
 
-  // 6. Convert key to Base64
-  const keyBase64 = bytesToBase64(new Uint8Array(rawKey));
+  /*
+   * Store:
+   *
+   * [12-byte IV][ciphertext + authentication tag]
+   *
+   * together as one binary value.
+   */
+  const combined = new Uint8Array(
+    iv.length + encrypted.byteLength
+  );
 
-  // 7. Package IV + ciphertext
-  const encryptedPackage = {
-    version: 1,
-    algorithm: "AES-256-GCM",
-    iv: bytesToBase64(iv),
-    ciphertext: bytesToBase64(new Uint8Array(encrypted)),
-  };
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(encrypted), iv.length);
+
+  const combinedBase64 = arrayBufferToBase64(
+    combined.buffer
+  );
+
+  const keyBase64 = arrayBufferToBase64(rawKey);
 
   return {
     key: keyBase64,
-    encryptedData: JSON.stringify(encryptedPackage),
+    ciphertext: combinedBase64,
   };
 }

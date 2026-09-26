@@ -1,58 +1,79 @@
-import { base64ToBytes } from "./encoding";
+const decoder = new TextDecoder();
 
-interface EncryptedPackage {
-  version: number;
-  algorithm: string;
-  iv: string;
-  ciphertext: string;
+function base64ToUint8Array(base64: string): Uint8Array {
+  try {
+    const binary = atob(base64);
+
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    return bytes;
+  } catch {
+    throw new Error("Invalid Base64 data.");
+  }
 }
 
 export async function decryptData(
   keyBase64: string,
-  encryptedData: string
+  ciphertextBase64: string
 ): Promise<string> {
-  // Parse encrypted package
-  const packageData: EncryptedPackage = JSON.parse(encryptedData);
-
-  if (
-    packageData.version !== 1 ||
-    packageData.algorithm !== "AES-256-GCM"
-  ) {
-    throw new Error("Unsupported encrypted data format.");
+  if (!keyBase64.trim()) {
+    throw new Error("Secret key is required.");
   }
 
-  // Convert key back to bytes
-  const rawKey = base64ToBytes(keyBase64);
-
-  if (rawKey.length !== 32) {
-    throw new Error("Invalid AES-256 key.");
+  if (!ciphertextBase64.trim()) {
+    throw new Error("Encrypted data is required.");
   }
 
-  // Import key
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    rawKey,
-    {
-      name: "AES-GCM",
-    },
-    false,
-    ["decrypt"]
+  const keyBytes = base64ToUint8Array(
+    keyBase64.trim()
   );
 
-  // Convert IV and ciphertext back to bytes
-  const iv = base64ToBytes(packageData.iv);
-  const ciphertext = base64ToBytes(packageData.ciphertext);
-
-  // Decrypt
-  const decrypted = await crypto.subtle.decrypt(
-    {
-      name: "AES-GCM",
-      iv,
-    },
-    cryptoKey,
-    ciphertext
+  const combined = base64ToUint8Array(
+    ciphertextBase64.trim()
   );
 
-  // Convert bytes back to text
-  return new TextDecoder().decode(decrypted);
+  // AES-GCM uses a 12-byte IV
+  const IV_LENGTH = 12;
+
+  if (combined.length <= IV_LENGTH) {
+    throw new Error("Invalid encrypted data.");
+  }
+
+  // Extract IV
+  const iv = combined.slice(0, IV_LENGTH);
+
+  // Extract ciphertext + authentication tag
+  const encryptedData = combined.slice(IV_LENGTH);
+
+  try {
+    const cryptoKey =
+      await window.crypto.subtle.importKey(
+        "raw",
+        keyBytes,
+        {
+          name: "AES-GCM",
+        },
+        false,
+        ["decrypt"]
+      );
+
+    const decrypted = await window.crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv,
+      },
+      cryptoKey,
+      encryptedData
+    );
+
+    return decoder.decode(decrypted);
+  } catch {
+    throw new Error(
+      "Decryption failed. Check the secret key and encrypted data."
+    );
+  }
 }
